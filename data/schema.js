@@ -1,143 +1,139 @@
-/**
- *  Copyright (c) 2015, Facebook, Inc.
- *  All rights reserved.
- *
- *  This source code is licensed under the BSD-style license found in the
- *  LICENSE file in the root directory of this source tree. An additional grant
- *  of patent rights can be found in the PATENTS file in the same directory.
- */
-
 import {
-  GraphQLBoolean,
-  GraphQLFloat,
-  GraphQLID,
-  GraphQLInt,
-  GraphQLList,
-  GraphQLNonNull,
-  GraphQLObjectType,
-  GraphQLSchema,
-  GraphQLString,
+    GraphQLFloat,
+    GraphQLID,
+    GraphQLInt,
+    GraphQLList,
+    GraphQLNonNull,
+    GraphQLObjectType,
+    GraphQLSchema,
+    GraphQLString,
 } from 'graphql';
 
 import {
-  connectionArgs,
-  connectionDefinitions,
-  connectionFromArray,
-  fromGlobalId,
-  globalIdField,
-  mutationWithClientMutationId,
-  nodeDefinitions,
+    mutationWithClientMutationId,
 } from 'graphql-relay';
 
 import {
-  // Import methods that your schema can use to interact with your database
-  User,
-  Widget,
-  getUser,
-  getViewer,
-  getWidget,
-  getWidgets,
+    getRoom,
+    getMessage,
+    addMessage,
+    editMessage,
+    deleteMessage,
+    getMessages,
 } from './database';
 
 /**
- * We get the node interface and field from the Relay library.
- *
- * The first method defines the way we resolve an ID to its object.
- * The second defines the way we resolve an object to its GraphQL type.
+ * Definition of a single message
  */
-var {nodeInterface, nodeField} = nodeDefinitions(
-  (globalId) => {
-    var {type, id} = fromGlobalId(globalId);
-    if (type === 'User') {
-      return getUser(id);
-    } else if (type === 'Widget') {
-      return getWidget(id);
-    } else {
-      return null;
-    }
-  },
-  (obj) => {
-    if (obj instanceof User) {
-      return userType;
-    } else if (obj instanceof Widget)  {
-      return widgetType;
-    } else {
-      return null;
-    }
-  }
-);
-
-/**
- * Define your own types here
- */
-
-var userType = new GraphQLObjectType({
-  name: 'User',
-  description: 'A person who uses our app',
-  fields: () => ({
-    id: globalIdField('User'),
-    widgets: {
-      type: widgetConnection,
-      description: 'A person\'s collection of widgets',
-      args: connectionArgs,
-      resolve: (_, args) => connectionFromArray(getWidgets(), args),
-    },
-  }),
-  interfaces: [nodeInterface],
-});
-
-var widgetType = new GraphQLObjectType({
-  name: 'Widget',
-  description: 'A shiny widget',
-  fields: () => ({
-    id: globalIdField('Widget'),
-    name: {
-      type: GraphQLString,
-      description: 'The name of the widget',
-    },
-  }),
-  interfaces: [nodeInterface],
+var MessageType = new GraphQLObjectType({
+    name: 'Message',
+    fields: () => ({
+        id: {type: GraphQLID},
+        text: {type: GraphQLString},
+        time: {type: GraphQLFloat},
+        roomId: {
+            type: GraphQLID,
+            resolve: message => message.room.id
+        }
+    })
 });
 
 /**
- * Define your own connection types here
+ * Definition of a single room which has many messages
  */
-var {connectionType: widgetConnection} =
-  connectionDefinitions({name: 'Widget', nodeType: widgetType});
-
-/**
- * This is the type that will be the root of our query,
- * and the entry point into our schema.
- */
-var queryType = new GraphQLObjectType({
-  name: 'Query',
-  fields: () => ({
-    node: nodeField,
-    // Add your own root fields here
-    viewer: {
-      type: userType,
-      resolve: () => getViewer(),
-    },
-  }),
+var RoomType = new GraphQLObjectType({
+    name: 'Room',
+    fields: () => ({
+        id: {type: GraphQLID},
+        name: {type: GraphQLString},
+        messages: {
+            type: new GraphQLList(MessageType),
+            resolve: room => getMessages(room.id)
+        }
+    })
 });
 
 /**
- * This is the type that will be the root of our mutations,
- * and the entry point into performing writes in our schema.
+ * Mutation to add a new message
  */
-var mutationType = new GraphQLObjectType({
-  name: 'Mutation',
-  fields: () => ({
-    // Add your own mutations here
-  })
+var MessageAddMutation = mutationWithClientMutationId({
+    name: 'MessageAdd',
+    inputFields: () => ({
+        roomId: {type: new GraphQLNonNull(GraphQLString)},
+        text: {type: new GraphQLNonNull(GraphQLString)}
+    }),
+    outputFields: () => ({
+        room: {
+            type: RoomType,
+            resolve: message => message.room
+        }
+    }),
+    mutateAndGetPayload: ({roomId, text}) => addMessage(roomId, text)
 });
 
 /**
- * Finally, we construct our schema (whose starting query type is the query
- * type we defined above) and export it.
+ * Mutation to edit a existing message
  */
-export var Schema = new GraphQLSchema({
-  query: queryType,
-  // Uncomment the following after adding some mutation fields:
-  // mutation: mutationType
+var MessageEditMutation = mutationWithClientMutationId({
+    name: 'MessageEdit',
+    inputFields: () => ({
+        id: {type: new GraphQLNonNull(GraphQLInt)},
+        text: {type: new GraphQLNonNull(GraphQLString)}
+    }),
+    outputFields: () => ({
+        message: {
+            type: MessageType,
+            resolve: message => message
+        }
+    }),
+    mutateAndGetPayload: ({id, text}) => editMessage(id, text)
+});
+
+/**
+ * Mutation to delete a existing message
+ */
+var MessageDeleteMutation = mutationWithClientMutationId({
+    name: 'MessageDelete',
+    inputFields: () => ({
+        id: {type: new GraphQLNonNull(GraphQLInt)}
+    }),
+    outputFields: () => ({
+        room: {
+            type: RoomType,
+            resolve: message => message.room
+        },
+        deletedMessageId: {
+            type: GraphQLInt,
+            resolve: message => message.id
+        }
+    }),
+    mutateAndGetPayload: ({id}) => deleteMessage(id)
+});
+
+/**
+ * GraphQL schema definition
+ */
+export const Schema = new GraphQLSchema({
+    // Query to retrieve data from GraphQL store
+    query: new GraphQLObjectType({
+        name: 'Query',
+        fields: () => ({
+            room: {
+                type: RoomType,
+                args: {
+                    id: {type: GraphQLString}
+                },
+                resolve: (root, args) => getRoom(args.id)
+            }
+        })
+    }),
+    // Mutate to change data in GraphQL store
+    mutation: new GraphQLObjectType({
+        name: 'Mutation',
+        fields: () => ({
+            addMessage: MessageAddMutation,
+            editMessage: MessageEditMutation,
+            deleteMessage: MessageDeleteMutation
+        })
+    })
 });

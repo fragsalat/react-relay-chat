@@ -1,33 +1,82 @@
+import Room from './room';
+import Message from './message';
+
+// Create sample data
+let mainRoom = new Room('main', 'Main Room');
+let messages = ['Sample', 'Message', 'Text'].map((text) => new Message(mainRoom, text, new Date().getTime()));
+
 /**
- *  Copyright (c) 2015, Facebook, Inc.
- *  All rights reserved.
+ * Get a room by id string
+ * The id has to be a string because relay doesn't permit numbers on root element id's
  *
- *  This source code is licensed under the BSD-style license found in the
- *  LICENSE file in the root directory of this source tree. An additional grant
- *  of patent rights can be found in the PATENTS file in the same directory.
+ * @param {string} id
+ * @returns {Room|null}
  */
+export var getRoom = id => {
+  return mainRoom.id === id ? mainRoom : null;
+}
 
-// Model types
-class User extends Object {}
-class Widget extends Object {}
+/**
+ * Get all messages for a single room by it's id
+ *
+ * @param {string} roomId
+ * @returns {Array.<T>}
+ */
+export var getMessages = roomId => {
+  return messages.filter(message => message.room.id === roomId);
+}
 
-// Mock data
-var viewer = new User();
-viewer.id = '1';
-viewer.name = 'Anonymous';
-var widgets = ['What\'s-it', 'Who\'s-it', 'How\'s-it'].map((name, i) => {
-  var widget = new Widget();
-  widget.name = name;
-  widget.id = `${i}`;
-  return widget;
-});
+/**
+ * Get a message by id
+ *
+ * @param {number} id
+ * @returns {T}
+ */
+export var getMessage = id => {
+  return messages.find(message => message.id === id);
+}
 
-module.exports = {
-  // Export methods that your schema can use to interact with your database
-  getUser: (id) => id === viewer.id ? viewer : null,
-  getViewer: () => viewer,
-  getWidget: (id) => widgets.find(w => w.id === id),
-  getWidgets: () => widgets,
-  User,
-  Widget,
-};
+/**
+ * Create a new message and add it to the store
+ *
+ * @param {string} roomId
+ * @param {string} text
+ * @returns {Message}
+ */
+export var addMessage = (roomId, text) => {
+  let room = getRoom(roomId);
+  // Create new message
+  let message = new Message(room, text.trim(), new Date().getTime());
+  // Add to messages
+  messages.push(message);
+
+  return message;
+}
+
+/**
+ * Edit a existing message
+ *
+ * @param {number} id
+ * @param {string} text
+ * @returns {T}
+ */
+export var editMessage = (id, text) => {
+  let message = messages.find(message => message.id === id);
+  message.text = text.trim();
+  return message;
+}
+
+/**
+ * Delete a existing message
+ *
+ * @param {number} id
+ * @returns {T}
+ */
+export var deleteMessage = id => {
+  let message = messages.find(message => message.id === id);
+  let index = messages.indexOf(message);
+  if (index !== -1) {
+    messages.splice(index, 1);
+  }
+  return message;
+}
